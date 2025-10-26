@@ -1,8 +1,11 @@
+import os
+import json
+import re
+import requests
+from io import BytesIO
 from flask import Flask, request, render_template, Response
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
-import os, json, re, requests
-from io import BytesIO
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -18,34 +21,34 @@ except:
 # Gemini client
 from google import genai
 from requests.auth import HTTPBasicAuth
-from dotenv import load_dotenv
 
 # ===== Load Environment Variables =====
-load_dotenv()
-ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_WHATSAPP = os.getenv("TWILIO_WHATSAPP_NUMBER")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_WHATSAPP = os.environ.get("TWILIO_WHATSAPP_NUMBER")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # Gemini Client
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Google Sheets using credentials from ENV
+# ===== Google Sheets Setup =====
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
           "https://www.googleapis.com/auth/drive"]
 
-creds_json = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
-creds_json["private_key"] = creds_json["private_key"].replace("\\n", "\n")
-credentials = Credentials.from_service_account_info(creds_json, scopes=SCOPES)
+# Load credentials from Render Secret File
+credentials = Credentials.from_service_account_file(
+    "/etc/secrets/google-key.json",
+    scopes=SCOPES
+)
 gc = gspread.authorize(credentials)
 sheet = gc.open("Candidate Data").sheet1
 
-# Twilio Client
+# ===== Twilio Client =====
 client = Client(ACCOUNT_SID, AUTH_TOKEN)
 
-# Flask App
+# ===== Flask App =====
 app = Flask(__name__)
-received_messages = []  # store messages in memory for UI
+received_messages = []  # store messages in memory for SSE UI
 
 # ===== Helper Functions =====
 def extract_text_from_file(media_url, media_type):
@@ -97,7 +100,6 @@ def extract_details(text):
             name = d.get("Name","").strip()
             email = d.get("Email","").strip()
             phone = d.get("Phone","").strip()
-            # Only include phone if it exists
             cleaned.append({"Name": name, "Email": email, "Phone": phone})
         return cleaned
     except Exception as e:
@@ -127,8 +129,8 @@ def incoming_message():
         if name or email or phone:
             try:
                 sheet.append_row([name,email,phone])
-            except:
-                pass
+            except Exception as e:
+                print("Google Sheet append error:", e)
             received_messages.append({"Name":name, "Email":email, "Phone":phone})
 
     resp = MessagingResponse()
@@ -153,4 +155,5 @@ def index():
 
 # ===== Run Flask =====
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
