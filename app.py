@@ -130,7 +130,7 @@ def incoming_message():
     for person in people:
         name = person.get("Name","")
         email = person.get("Email","")
-        phone = person.get("Phone","") or from_number  # fallback to WhatsApp number
+        phone = person.get("Phone","") 
 
         # Append to Google Sheet only if at least one field exists
         if name or email or phone:
@@ -167,3 +167,4 @@ def index():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
+
