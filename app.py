@@ -35,6 +35,7 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
           "https://www.googleapis.com/auth/drive"]
 
 creds_json = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+creds_json["private_key"] = creds_json["private_key"].replace("\\n", "\n")
 credentials = Credentials.from_service_account_info(creds_json, scopes=SCOPES)
 gc = gspread.authorize(credentials)
 sheet = gc.open("Candidate Data").sheet1
