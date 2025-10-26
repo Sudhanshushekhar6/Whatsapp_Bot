@@ -1,6 +1,5 @@
 import os
 import json
-import re
 import requests
 from io import BytesIO
 from flask import Flask, request, render_template, Response
@@ -15,7 +14,7 @@ import docx
 try:
     import pytesseract
     from PIL import Image
-except:
+except ImportError:
     pytesseract = None
 
 # Gemini client
@@ -52,6 +51,7 @@ received_messages = []  # store messages in memory for SSE UI
 
 # ===== Helper Functions =====
 def extract_text_from_file(media_url, media_type):
+    """Extract text from PDF, Word, or image files"""
     try:
         response = requests.get(media_url, auth=HTTPBasicAuth(ACCOUNT_SID, AUTH_TOKEN))
         if 'pdf' in media_type.lower():
@@ -75,6 +75,7 @@ def extract_text_from_file(media_url, media_type):
         return ""
 
 def extract_details(text):
+    """Extract Name, Email, Phone using Gemini AI"""
     prompt = (
         "Extract all people’s details (Name, Email, Phone) from this text.\n"
         "Return strictly as a JSON array like:\n"
@@ -113,26 +114,35 @@ def incoming_message():
     message_body = request.form.get("Body") or ""
     num_media = int(request.form.get("NumMedia", 0))
 
+    # Extract text from file if media exists
     if num_media > 0:
         media_url = request.form.get("MediaUrl0")
         media_type = request.form.get("MediaContentType0")
         message_body = extract_text_from_file(media_url, media_type)
 
+    # Extract details using Gemini
     people = extract_details(message_body)
+
+    # Ensure at least one record to show confirmation
+    if not people:
+        people = [{"Name": "", "Email": "", "Phone": ""}]
 
     for person in people:
         name = person.get("Name","")
         email = person.get("Email","")
-        phone = person.get("Phone","")
-        if not phone:  # fallback to WhatsApp number if no phone
-            phone = ""  
+        phone = person.get("Phone","") or from_number  # fallback to WhatsApp number
+
+        # Append to Google Sheet only if at least one field exists
         if name or email or phone:
             try:
-                sheet.append_row([name,email,phone])
+                sheet.append_row([name, email, phone])
             except Exception as e:
                 print("Google Sheet append error:", e)
-            received_messages.append({"Name":name, "Email":email, "Phone":phone})
 
+        # Always append to in-memory list for UI
+        received_messages.append({"Name": name, "Email": email, "Phone": phone})
+
+    # Always send confirmation
     resp = MessagingResponse()
     resp.message("✅ Your data has been received and stored successfully.")
     return str(resp)
